@@ -1,0 +1,166 @@
+#question1
+import pandas as pd
+import networkx as nx
+
+def calculate_distance_matrix(csv_file):
+    # Load the dataset
+    df = pd.read_csv(csv_file)
+
+    # Create a directed graph
+    G = nx.DiGraph()
+
+    # Add edges with weights to the graph
+    for index, row in df.iterrows():
+        G.add_edge(row['Source'], row['Destination'], weight=row['Distance'])
+
+    # Calculate all-pairs shortest paths
+    all_pairs_shortest_paths = dict(nx.all_pairs_dijkstra_path_length(G))
+
+    # Initialize a matrix with zeros
+    num_nodes = len(G.nodes)
+    distance_matrix = pd.DataFrame(0, index=G.nodes, columns=G.nodes)
+
+    # Fill in the matrix with cumulative distances
+    for i in range(num_nodes):
+        for j in range(num_nodes):
+            if i != j:
+                distance_matrix.iloc[i, j] = all_pairs_shortest_paths[i][j]
+
+    return distance_matrix
+
+
+resulting_matrix = calculate_distance_matrix("dataset-3.csv")
+print(resulting_matrix)
+
+#question2
+import pandas as pd
+
+def unroll_distance_matrix(distance_matrix):
+    # Get the list of node IDs
+    node_ids = distance_matrix.index
+
+    # Initialize lists to store results
+    id_start_list = []
+    id_end_list = []
+    distance_list = []
+
+    # Iterate through the distance matrix and populate lists
+    for id_start in node_ids:
+        for id_end in node_ids:
+            if id_start != id_end:
+                distance = distance_matrix.loc[id_start, id_end]
+                id_start_list.append(id_start)
+                id_end_list.append(id_end)
+                distance_list.append(distance)
+
+    # Create a DataFrame from the lists
+    unrolled_df = pd.DataFrame({
+        'id_start': id_start_list,
+        'id_end': id_end_list,
+        'distance': distance_list
+    })
+
+    return unrolled_df
+
+# Example usage
+distance_matrix = calculate_distance_matrix("dataset-3.csv")  # Use the previously defined function
+unrolled_matrix = unroll_distance_matrix(distance_matrix)
+print(unrolled_matrix)
+
+#question3
+import pandas as pd
+
+def find_ids_within_ten_percentage_threshold(df, reference_value):
+    # Filter rows with the given reference_value as id_start
+    reference_rows = df[df['id_start'] == reference_value]
+
+    # Calculate the average distance for the reference_value
+    reference_avg_distance = reference_rows['distance'].mean()
+
+    # Calculate the threshold range (10% of the average distance)
+    threshold = 0.1 * reference_avg_distance
+
+    # Find values within the threshold range
+    within_threshold_values = df[
+        (df['distance'] >= reference_avg_distance - threshold) &
+        (df['distance'] <= reference_avg_distance + threshold)
+    ]['id_start'].unique()
+
+    # Sort the list of values
+    within_threshold_values = sorted(within_threshold_values)
+
+    return within_threshold_values
+
+
+reference_value = 1  
+result = find_ids_within_ten_percentage_threshold(unrolled_matrix, 10)
+print(result)
+
+#question4
+import pandas as pd
+
+def calculate_toll_rate(df):
+    # Define rate coefficients for each vehicle type
+    rate_coefficients = {
+        'moto': 0.8,
+        'car': 1.2,
+        'rv': 1.5,
+        'bus': 2.2,
+        'truck': 3.6
+    }
+
+    # Add columns for each vehicle type with their respective toll rates
+    for vehicle_type, rate in rate_coefficients.items():
+        df[vehicle_type] = df['distance'] * rate
+
+    return df
+
+
+result_with_toll_rates = calculate_toll_rate(unrolled_matrix)
+print(result_with_toll_rates)
+
+#question5
+import pandas as pd
+from datetime import datetime, timedelta, time
+
+def calculate_time_based_toll_rates(df):
+    # Define time ranges and discount factors
+    time_ranges = [
+        (time(0, 0, 0), time(10, 0, 0), 0.8),
+        (time(10, 0, 0), time(18, 0, 0), 1.2),
+        (time(18, 0, 0), time(23, 59, 59), 0.8)
+    ]
+    weekend_discount_factor = 0.7
+
+    # Create a new DataFrame to store time-based toll rates
+    time_based_df = pd.DataFrame(columns=['start_day', 'start_time', 'end_day', 'end_time'] + df.columns.tolist())
+
+    # Iterate over each unique (id_start, id_end) pair
+    for index, row in df.iterrows():
+        for day in range(7):  # Span all 7 days of the week
+            for start_time, end_time, discount_factor in time_ranges:
+                # Calculate start and end datetime for the current time range and day
+                start_datetime = datetime.combine(datetime.today(), start_time) + timedelta(days=day)
+                end_datetime = datetime.combine(datetime.today(), end_time) + timedelta(days=day)
+
+                # Apply the discount factor based on the day and time
+                for vehicle_type in ['moto', 'car', 'rv', 'bus', 'truck']:
+                    df.at[index, vehicle_type] = row[vehicle_type] * discount_factor
+
+                # Append the row to the new DataFrame
+                time_based_df = time_based_df.append({
+                    'start_day': start_datetime.strftime('%A'),
+                    'start_time': start_datetime.time(),
+                    'end_day': end_datetime.strftime('%A'),
+                    'end_time': end_datetime.time(),
+                    **row
+                }, ignore_index=True)
+
+    return time_based_df
+
+result_with_time_based_rates = calculate_time_based_toll_rates(result_with_toll_rates)
+print(result_with_time_based_rates)
+
+
+
+
